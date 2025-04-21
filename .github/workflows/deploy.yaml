@@ -35,18 +35,25 @@ jobs:
           script: |
             cd /home/deployer/postlink-api
             IMAGE_ID=ghcr.io/${{ github.repository_owner }}/postlink-api
-  
+      
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-  
+      
+            # Определяем порт для нового контейнера
             NEXT_PORT=$(if docker ps | grep laravel-9001; then echo 9002; else echo 9001; fi)
-  
+      
+            # Пуллим образ
             docker pull $IMAGE_ID
-  
+      
+            # Запускаем новый контейнер
             docker run -d --name laravel-$NEXT_PORT -p $NEXT_PORT:9000 $IMAGE_ID
-  
-            sed -i "s/server app:[0-9]*/server app:$NEXT_PORT;/" ./docker/nginx/nginx.conf
+      
+            # Меняем порт в nginx.conf
+            sed -i "s/server 127.0.0.1:[0-9]*/server 127.0.0.1:$NEXT_PORT;/" ./docker/nginx/nginx.conf
+      
+            # Перезапускаем nginx
             docker compose restart nginx
-  
+      
+            # Удаляем старый контейнер
             OLD_PORT=$(if [ "$NEXT_PORT" = "9001" ]; then echo 9002; else echo 9001; fi)
             docker rm -f laravel-$OLD_PORT || true
-
+      
