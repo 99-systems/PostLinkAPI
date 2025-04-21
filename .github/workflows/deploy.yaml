@@ -1,0 +1,52 @@
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+  
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+  
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+  
+      - name: Build and Push Docker image to GHCR
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/postlink-api
+          docker build -t $IMAGE_ID .
+          docker push $IMAGE_ID
+  
+      - name: Deploy via SSH to server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/deployer/postlink-api
+            IMAGE_ID=ghcr.io/${{ github.repository_owner }}/postlink-api
+  
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+  
+            NEXT_PORT=$(if docker ps | grep laravel-9001; then echo 9002; else echo 9001; fi)
+  
+            docker pull $IMAGE_ID
+  
+            docker run -d --name laravel-$NEXT_PORT -p $NEXT_PORT:9000 $IMAGE_ID
+  
+            sed -i "s/server app:[0-9]*/server app:$NEXT_PORT;/" ./docker/nginx/nginx.conf
+            docker compose restart nginx
+  
+            OLD_PORT=$(if [ "$NEXT_PORT" = "9001" ]; then echo 9002; else echo 9001; fi)
+            docker rm -f laravel-$OLD_PORT || true
+

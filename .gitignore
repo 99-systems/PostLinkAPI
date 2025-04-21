@@ -5,6 +5,7 @@
 /public/storage
 /storage/*.key
 /vendor
+docker/laravel/.env
 .env
 .env.backup
 .env.production
